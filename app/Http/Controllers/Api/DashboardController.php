@@ -5,6 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
+use App\Models\Attendance;
+use App\Models\User;
+use Carbon\Carbon;
+
 class DashboardController extends Controller
 {
     public function employeeDashboard(Request $request)

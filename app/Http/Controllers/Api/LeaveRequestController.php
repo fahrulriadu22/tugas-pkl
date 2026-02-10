@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\LeaveRequest;
+
 
 class LeaveRequestController extends Controller
 {
@@ -20,6 +22,7 @@ class LeaveRequestController extends Controller
             'type' => $request->type,
             'date' => $request->date,
             'reason' => $request->reason,
+            'status' => 'pending',
         ]);
 
         return response()->json([
@@ -57,6 +60,18 @@ class LeaveRequestController extends Controller
         return response()->json([
             'message' => 'Izin ditolak',
             'data' => $leave
+        ]);
+    }
+    
+    public function allRequests()
+    {
+        $requests = LeaveRequest::with('user')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $requests
         ]);
     }
 
