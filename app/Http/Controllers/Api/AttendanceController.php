@@ -8,6 +8,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\Holiday;
 use Carbon\Carbon;
+use App\Models\Setting;
+
 
 
 class AttendanceController extends Controller
