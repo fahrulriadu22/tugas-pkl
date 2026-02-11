@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\LeaveRequestController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\SettingController;
+
 
 /*
 |--------------------------------------------------------------------------
