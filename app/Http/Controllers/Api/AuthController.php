@@ -121,4 +121,53 @@ class AuthController extends Controller
             ]
         ], 200);
     }
+
+    public function listEmployees()
+    {
+        $employees = User::where('role', 'employee')
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $employees
+        ]);
+    }
+
+    public function updateEmployee(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+
+        $request->validate([
+            'name'   => 'required|string',
+            'email'  => 'required|email',
+            'status' => 'required|in:active,inactive'
+        ]);
+
+        $user->update([
+            'name'   => $request->name,
+            'email'  => $request->email,
+            'status' => $request->status
+        ]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Data employee berhasil diperbarui',
+            'data'    => $user
+        ]);
+    }
+
+
+    public function deleteEmployee($id)
+    {
+        $user = User::findOrFail($id);
+  
+        $user->delete();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Employee berhasil dihapus'
+        ]);
+    }
+
 }
