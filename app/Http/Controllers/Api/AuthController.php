@@ -170,4 +170,46 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+ * Register Admin (Only Superadmin/Admin Allowed)
+ */
+public function createAdmin(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'name'     => 'required|string|max:100',
+            'email'    => 'required|email|unique:users',
+            'password' => 'required|min:6'
+        ]);
+
+        $admin = User::create([
+            'name'     => $validated['name'],
+            'email'    => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'role'     => 'admin'
+        ]);
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Admin created successfully',
+            'data'    => $admin
+        ], 201);
+
+    } catch (ValidationException $e) {
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Validation failed',
+            'errors'  => $e->errors(),
+        ], 422);
+
+    } catch (\Exception $e) {
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Admin creation failed',
+        ], 500);
+    }
+}
+
 }

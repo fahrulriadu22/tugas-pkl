@@ -21,6 +21,7 @@ Route::get('/test', function () {
 
 
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register-admin', [AuthController::class, 'createAdmin']);
 
 /*
 |--------------------------------------------------------------------------
