@@ -2,30 +2,37 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Setting;
 
 class SettingSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
-    public function run()
+    public function run(): void
     {
-        Setting::updateOrCreate(
-            ['key' => 'office_latitude'],
-            ['value' => '-7.7762992']
-        );
+        $data = [
+            [
+                'key'   => 'work_start_time',
+                'value' => '09:00'
+            ],
+            [
+                'key'   => 'late_limit_time',
+                'value' => '09:10'
+            ],
+            [
+                'key'   => 'checkin_close_time',
+                'value' => '18:00'
+            ],
+            [
+                'key'   => 'work_end_time',
+                'value' => '18:00'
+            ],
+        ];
 
-        Setting::updateOrCreate(
-            ['key' => 'office_longitude'],
-            ['value' => '110.4100740']
-        );
-
-        Setting::updateOrCreate(
-            ['key' => 'office_radius'],
-            ['value' => '50']
-        );
+        foreach ($data as $item) {
+            Setting::updateOrCreate(
+                ['key' => $item['key']],
+                ['value' => $item['value']]
+            );
+        }
     }
 }

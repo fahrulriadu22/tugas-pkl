@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use App\Models\Holiday;
 use Carbon\Carbon;
 use App\Models\Setting;
-
+use App\Models\OfficeLocation;
 
 
 class AttendanceController extends Controller
@@ -17,54 +17,39 @@ class AttendanceController extends Controller
     
     public function checkIn(Request $request)
     {
-        $user = $request->user();
+        $user  = $request->user();
         $today = Carbon::today()->toDateString();
 
         $request->validate([
             'latitude'  => 'required|numeric',
             'longitude' => 'required|numeric',
-
-            // ✅ wajib selfie
             'photo'     => 'required|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
-        // ===============================
-        // ✅ Ambil Setting Kantor
-        // ===============================
-        $settings = Setting::whereIn('key', [
-            'office_latitude',
-            'office_longitude',
-            'office_radius',
-            'work_start_time',
-            'late_limit_time',
-            'checkin_close_time'
-        ])->pluck('value', 'key');
+        
+        $office = OfficeLocation::first();
 
-        $officeLat = (float) ($settings['office_latitude'] ?? 0);
-        $officeLon = (float) ($settings['office_longitude'] ?? 0);
-        $radius    = (float) ($settings['office_radius'] ?? 50);
-
-        if (!$officeLat || !$officeLon) {
+        if (!$office) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Lokasi kantor belum diatur admin'
+                'status'  => 'error',
+                'message' => 'Lokasi kantor belum ditentukan admin'
             ], 422);
         }
 
         // ===============================
-        // ✅ Validasi Radius
+        // ✅ Validasi Radius Lokasi
         // ===============================
         $distance = $this->distanceMeter(
-            $officeLat,
-            $officeLon,
+            $office->latitude,
+            $office->longitude,
             $request->latitude,
             $request->longitude
         );
 
-        if ($distance > $radius) {
+        if ($distance > $office->radius_meter) {
             return response()->json([
-                'status' => 'error',
-                'message' => "Kamu harus berada dalam radius kantor ({$radius}m)"
+                'status'  => 'error',
+                'message' => "Kamu harus berada dalam radius kantor ({$office->radius_meter} meter)"
             ], 403);
         }
 
@@ -77,38 +62,41 @@ class AttendanceController extends Controller
 
         if ($existing) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Kamu sudah check-in hari ini'
             ], 400);
         }
 
         // ===============================
-        // ✅ Aturan Waktu Check-in
+        // ✅ Ambil Setting Jam Kerja (Masih dari Settings)
         // ===============================
+        $settings = Setting::whereIn('key', [
+            'late_limit_time',
+            'checkin_close_time'
+        ])->pluck('value', 'key');
+
         $now = Carbon::now();
 
-        $lateLimitTime  = $settings['late_limit_time'] ?? "09:30";
-        $checkinClose   = $settings['checkin_close_time'] ?? "12:00";
+        $lateLimitTime = $settings['late_limit_time'] ?? "09:30";
+        $closeTime     = $settings['checkin_close_time'] ?? "18:00";
 
-        $lateLimit      = Carbon::today()->setTimeFromTimeString($lateLimitTime);
-        $closeLimit     = Carbon::today()->setTimeFromTimeString($checkinClose);
+        $lateLimit  = Carbon::today()->setTimeFromTimeString($lateLimitTime);
+        $closeLimit = Carbon::today()->setTimeFromTimeString($closeTime);
 
         if ($now->greaterThan($closeLimit)) {
             return response()->json([
-                'status' => 'error',
-                'message' => "Check-in ditutup setelah jam {$checkinClose}"
+                'status'  => 'error',
+                'message' => "Check-in ditutup setelah jam {$closeTime}"
             ], 403);
         }
 
-        // ===============================
-        // ✅ Status Hadir / Terlambat
-        // ===============================
+        
         $status = $now->greaterThan($lateLimit)
             ? 'terlambat'
             : 'hadir';
 
         // ===============================
-        // ✅ Upload Foto Selfie Check-in
+        // ✅ Upload Foto Check-in
         // ===============================
         $photoPath = $request->file('photo')->store(
             'attendance/checkin',
@@ -119,56 +107,44 @@ class AttendanceController extends Controller
         // ✅ Simpan Absensi
         // ===============================
         $attendance = Attendance::create([
-            'user_id'       => $user->id,
-            'date'          => $today,
-            'check_in'      => $now->format('H:i:s'),
-            'status'        => $status,
-            'latitude'      => $request->latitude,
-            'longitude'     => $request->longitude,
-
-            // ✅ simpan foto
-            'checkin_photo' => $photoPath,
+            'user_id'             => $user->id,
+            'office_location_id'  => $office->id, // ✅ penting
+            'date'                => $today,
+            'check_in'            => $now->format('H:i:s'),
+            'status'              => $status,
+            'latitude'            => $request->latitude,
+            'longitude'           => $request->longitude,
+            'checkin_photo'       => $photoPath,
         ]);
 
         return response()->json([
-            'status' => 'success',
-            'message' => 'Check-in berhasil dengan selfie',
-            'data' => $attendance
-        ]);
+            'status'  => 'success',
+            'message' => 'Check-in berhasil',
+            'data'    => $attendance
+        ], 201);
     }
 
 
     public function checkOut(Request $request)
     {
-        $user = $request->user();
+        $user  = $request->user();
         $today = Carbon::today()->toDateString();
 
         $request->validate([
             'latitude'  => 'required|numeric',
             'longitude' => 'required|numeric',
-
-            // ✅ wajib selfie juga
             'photo'     => 'required|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         // ===============================
-        // ✅ Ambil Setting Kantor
+        // ✅ Ambil Lokasi Kantor
         // ===============================
-        $settings = Setting::whereIn('key', [
-            'office_latitude',
-            'office_longitude',
-            'office_radius',
-            'work_end_time'
-        ])->pluck('value', 'key');
+        $office = OfficeLocation::first();
 
-        $officeLat = (float) ($settings['office_latitude'] ?? 0);
-        $officeLon = (float) ($settings['office_longitude'] ?? 0);
-        $radius    = (float) ($settings['office_radius'] ?? 50);
-
-        if (!$officeLat || !$officeLon) {
+        if (!$office) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Lokasi kantor belum diatur admin'
+                'status'  => 'error',
+                'message' => 'Lokasi kantor belum ditentukan admin'
             ], 422);
         }
 
@@ -176,21 +152,21 @@ class AttendanceController extends Controller
         // ✅ Validasi Radius
         // ===============================
         $distance = $this->distanceMeter(
-            $officeLat,
-            $officeLon,
+            $office->latitude,
+            $office->longitude,
             $request->latitude,
             $request->longitude
         );
 
-        if ($distance > $radius) {
+        if ($distance > $office->radius_meter) {
             return response()->json([
-                'status' => 'error',
-                'message' => "Kamu harus berada dalam radius kantor ({$radius}m)"
+                'status'  => 'error',
+                'message' => "Kamu harus berada dalam radius kantor ({$office->radius_meter} meter)"
             ], 403);
         }
 
         // ===============================
-        // ✅ Ambil Data Absensi Hari Ini
+        // ✅ Ambil Attendance Hari Ini
         // ===============================
         $attendance = Attendance::where('user_id', $user->id)
             ->where('date', $today)
@@ -198,33 +174,37 @@ class AttendanceController extends Controller
 
         if (!$attendance) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Kamu belum check-in hari ini'
             ], 400);
         }
 
         if ($attendance->check_out) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => 'Kamu sudah check-out hari ini'
             ], 400);
         }
 
         // ===============================
-        // ✅ Aturan Jam Pulang
+        // ✅ Aturan Jam Pulang (Setting)
         // ===============================
+        $settings = Setting::whereIn('key', [
+            'work_end_time'
+        ])->pluck('value', 'key');
+
         $workEndTime = $settings['work_end_time'] ?? "18:00";
         $workEnd     = Carbon::today()->setTimeFromTimeString($workEndTime);
 
         if (Carbon::now()->lessThan($workEnd)) {
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => "Belum waktunya pulang (minimal jam {$workEndTime})"
             ], 403);
         }
 
         // ===============================
-        // ✅ Upload Foto Selfie Check-out
+        // ✅ Upload Foto Check-out
         // ===============================
         $photoPath = $request->file('photo')->store(
             'attendance/checkout',
@@ -232,20 +212,18 @@ class AttendanceController extends Controller
         );
 
         // ===============================
-        // ✅ Simpan Check-out + Foto
+        // ✅ Update Check-out
         // ===============================
         $attendance->update([
-            'check_out'      => Carbon::now()->format('H:i:s'),
-            'checkout_photo' => $photoPath,
+            'check_out'          => Carbon::now()->format('H:i:s'),
+            'checkout_photo'     => $photoPath,
         ]);
-
-        $attendance->refresh();
 
         return response()->json([
-            'status' => 'success',
-            'message' => 'Check-out berhasil dengan selfie',
-            'data' => $attendance
-        ]);
+            'status'  => 'success',
+            'message' => 'Check-out berhasil',
+            'data'    => $attendance->fresh()
+        ], 200);
     }
 
 

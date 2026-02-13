@@ -75,13 +75,13 @@ class LeaveRequestController extends Controller
      */
     public function myRequests(Request $request)
     {
-        $data = LeaveRequest::where('user_id', $request->user()->id)
+        $request = LeaveRequest::where('user_id', $request->user()->id)
             ->orderBy('date', 'desc')
             ->get();
 
         return response()->json([
             'status' => 'success',
-            'data'   => $data
+            'data'   => $request
         ]);
     }
 
