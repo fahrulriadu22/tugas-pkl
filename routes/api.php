@@ -10,6 +10,10 @@ use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\OfficeLocationController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\SuperAdminController;
+use App\Http\Controllers\Api\FaceAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -61,7 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'employeeDashboard']);
 
-    Route::middleware(['auth:sanctum', 'face.verified'])->group(function () {
+    Route::middleware('face.verified')->group(function () {
 
         Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
         Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
@@ -70,7 +74,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Admin Routes (HR Only)
+    | Admin Routes 
     |--------------------------------------------------------------------------
     */
     Route::middleware('admin')->prefix('admin')->group(function () {
@@ -91,10 +95,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Update Office Location
         Route::put('/office-location', [OfficeLocationController::class, 'updateOffice']);
+        Route::post('/office-locations', [OfficeLocationController::class, 'store']);
+        Route::get('/office-locations', [OfficeLocationController::class, 'index']);
+        Route::put('/office-locations/{id}', [OfficeLocationController::class, 'update']);
+        Route::delete('/office-locations/{id}', [OfficeLocationController::class, 'destroy']);
 
         // Attendance Monitoring
         Route::get('/attendance', [AttendanceController::class, 'allAttendances']);
         Route::get('/attendance/summary', [AttendanceController::class, 'adminMonthlySummary']);
+        Route::get('/attendance/export', [AttendanceController::class, 'export']);
+        Route::put('/attendance/{id}', [AttendanceController::class, 'updateAttendance']);
+        Route::get('/attendance/user/{user_id}', [AttendanceController::class, 'attendanceByUser']);
 
         // Leave Requests Approval
         Route::get('/leave-requests', [LeaveRequestController::class, 'allRequests']);
@@ -103,5 +114,41 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Dashboard Admin
         Route::get('/dashboard', [DashboardController::class, 'adminDashboard']);
+    });
+
+    Route::middleware('role:superadmin')->prefix('superadmin')->group(function () {
+        Route::get('/dashboard', [SuperAdminController::class, 'dashboard']);
+
+       // Admin Management
+        Route::get('/admins', [UserController::class, 'listAdmins']);
+        Route::post('/admins', [UserController::class, 'createAdmin']);
+        Route::put('/admins/{id}/role', [UserController::class, 'updateRole']);
+        Route::patch('/admins/{id}/status', [UserController::class, 'updateStatus']);
+        Route::delete('/admins/{id}', [UserController::class, 'deleteAdmin']);
+
+        // Activity Logs
+        Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+
+        Route::get('/settings', [SuperAdminController::class, 'getSettings']);
+        Route::put('/settings', [SuperAdminController::class, 'updateSettings']);
+
+        // Employee Global Control
+        Route::get('/employees', [SuperAdminController::class, 'listEmployees']);
+        Route::patch('/employees/{id}/status', [SuperAdminController::class, 'updateEmployeeStatus']);
+        Route::post('/employees/{id}/force-logout', [SuperAdminController::class, 'forceLogoutEmployee']);
+        Route::post('/employees/{id}/reset-password', [SuperAdminController::class, 'resetEmployeePassword']);
+
+        Route::get('/offices', [SuperAdminController::class, 'listOffices']);
+        Route::post('/offices', [SuperAdminController::class, 'createOffice']);
+        Route::put('/offices/{id}', [SuperAdminController::class, 'updateOffice']);
+        Route::delete('/offices/{id}', [SuperAdminController::class, 'deleteOffice']);
+
+        Route::post('/system/force-logout-all', [SuperAdminController::class, 'forceLogoutAll']);
+
+        Route::prefix('reports')->group(function () {
+            Route::get('/attendance', [SuperAdminController::class, 'exportAttendanceReport']);
+            Route::get('/employees', [SuperAdminController::class, 'exportEmployeeReport']);
+            Route::get('/system', [SuperAdminController::class, 'exportSystemReport']);
+        });
     });
 });

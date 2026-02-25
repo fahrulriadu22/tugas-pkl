@@ -18,6 +18,10 @@ class Attendance extends Model
         'latitude',
         'longitude',
         'photo',
+        'checkin_photo',
+        'checkout_photo',
+        'manual_edit',
+        'edit_reason',
     ];
 
     // relasi ke user

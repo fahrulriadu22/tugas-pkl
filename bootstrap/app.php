@@ -24,7 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // ✅ Tambahkan alias middleware admin di sini
         $middleware->alias([
             'admin' => AdminOnly::class,
-        ]);
+            'face.verified' => \App\Http\Middleware\FaceVerified::class,
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
+        ]);       
 
         // ✅ CSRF untuk API dimatikan
         $middleware->validateCsrfTokens(except: [

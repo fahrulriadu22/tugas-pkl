@@ -10,7 +10,9 @@ use App\Models\Holiday;
 use Carbon\Carbon;
 use App\Models\Setting;
 use App\Models\OfficeLocation;
-
+use App\Models\AttendanceLog;
+use App\Exports\AttendanceExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class AttendanceController extends Controller
 {
@@ -19,22 +21,42 @@ class AttendanceController extends Controller
     {
         $user  = $request->user();
         $today = Carbon::today()->toDateString();
+        $now   = Carbon::now();
 
+        // ===============================
+        // ✅ Validasi Input
+        // ===============================
         $request->validate([
-            'latitude'  => 'required|numeric',
-            'longitude' => 'required|numeric',
-            'photo'     => 'required|image|mimes:jpg,jpeg,png|max:2048',
+            'office_location_id' => 'required|exists:office_locations,id',
+            'latitude'           => 'required|numeric',
+            'longitude'          => 'required|numeric',
+            'selfie'             => 'required|image|mimes:jpg,jpeg,png|max:4096',
         ]);
 
-        
-        $office = OfficeLocation::first();
+        // ===============================
+        // ✅ Ambil Data Kantor
+        // ===============================
+        $office = OfficeLocation::find($request->office_location_id);
 
         if (!$office) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Lokasi kantor belum ditentukan admin'
+                'message' => 'Lokasi kantor tidak ditemukan'
             ], 422);
         }
+
+       
+        // OPTIONAL: Batasi Kantor Sesuai User
+        // (aktifkan jika user hanya boleh 1 kantor)
+       
+        
+        if ($user->office_location_id !== $office->id) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Kamu tidak terdaftar di kantor ini'
+            ], 403);
+        }
+        
 
         // ===============================
         // ✅ Validasi Radius Lokasi
@@ -68,14 +90,12 @@ class AttendanceController extends Controller
         }
 
         // ===============================
-        // ✅ Ambil Setting Jam Kerja (Masih dari Settings)
+        // ✅ Ambil Setting Jam Kerja
         // ===============================
         $settings = Setting::whereIn('key', [
             'late_limit_time',
             'checkin_close_time'
         ])->pluck('value', 'key');
-
-        $now = Carbon::now();
 
         $lateLimitTime = $settings['late_limit_time'] ?? "09:30";
         $closeTime     = $settings['checkin_close_time'] ?? "18:00";
@@ -90,38 +110,54 @@ class AttendanceController extends Controller
             ], 403);
         }
 
-        
         $status = $now->greaterThan($lateLimit)
             ? 'terlambat'
             : 'hadir';
 
         // ===============================
-        // ✅ Upload Foto Check-in
+        // ✅ Upload Foto
         // ===============================
-        $photoPath = $request->file('photo')->store(
-            'attendance/checkin',
-            'public'
-        );
+        $selfiePath = $request->file('selfie')
+            ->store('attendance/checkin_selfie', 'public');
 
         // ===============================
-        // ✅ Simpan Absensi
+        // ✅ Simpan Absensi (Transactional)
         // ===============================
-        $attendance = Attendance::create([
-            'user_id'             => $user->id,
-            'office_location_id'  => $office->id, // ✅ penting
-            'date'                => $today,
-            'check_in'            => $now->format('H:i:s'),
-            'status'              => $status,
-            'latitude'            => $request->latitude,
-            'longitude'           => $request->longitude,
-            'checkin_photo'       => $photoPath,
-        ]);
+        DB::beginTransaction();
 
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'Check-in berhasil',
-            'data'    => $attendance
-        ], 201);
+        try {
+
+            $attendance = Attendance::create([
+                'user_id'            => $user->id,
+                'office_location_id' => $office->id,
+                'date'               => $today,
+                'check_in'           => $now->format('H:i:s'),
+                'status'             => $status,
+                'latitude'           => $request->latitude,
+                'longitude'          => $request->longitude,
+                'checkin_photo'      => $selfiePath,
+                'manual_edit'        => false,
+                'edit_reason'        => null,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Check-in berhasil',
+                'data'    => $attendance
+            ], 201);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Terjadi kesalahan saat menyimpan absensi',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
     }
 
 
@@ -129,41 +165,16 @@ class AttendanceController extends Controller
     {
         $user  = $request->user();
         $today = Carbon::today()->toDateString();
+        $now   = Carbon::now();
 
+        // ===============================
+        // ✅ Validasi Input
+        // ===============================
         $request->validate([
             'latitude'  => 'required|numeric',
             'longitude' => 'required|numeric',
-            'photo'     => 'required|image|mimes:jpg,jpeg,png|max:2048',
+            'selfie'    => 'required|image|mimes:jpg,jpeg,png|max:4096',
         ]);
-
-        // ===============================
-        // ✅ Ambil Lokasi Kantor
-        // ===============================
-        $office = OfficeLocation::first();
-
-        if (!$office) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Lokasi kantor belum ditentukan admin'
-            ], 422);
-        }
-
-        // ===============================
-        // ✅ Validasi Radius
-        // ===============================
-        $distance = $this->distanceMeter(
-            $office->latitude,
-            $office->longitude,
-            $request->latitude,
-            $request->longitude
-        );
-
-        if ($distance > $office->radius_meter) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => "Kamu harus berada dalam radius kantor ({$office->radius_meter} meter)"
-            ], 403);
-        }
 
         // ===============================
         // ✅ Ambil Attendance Hari Ini
@@ -187,7 +198,38 @@ class AttendanceController extends Controller
         }
 
         // ===============================
-        // ✅ Aturan Jam Pulang (Setting)
+        // ✅ Ambil Kantor Berdasarkan Attendance
+        // ===============================
+        $office = $attendance->officeLocation; 
+        // pastikan ada relasi:
+        // public function officeLocation() { return $this->belongsTo(OfficeLocation::class); }
+
+        if (!$office) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Data kantor tidak ditemukan'
+            ], 422);
+        }
+
+        // ===============================
+        // ✅ Validasi Radius
+        // ===============================
+        $distance = $this->distanceMeter(
+            $office->latitude,
+            $office->longitude,
+            $request->latitude,
+            $request->longitude
+        );
+
+        if ($distance > $office->radius_meter) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => "Kamu harus berada dalam radius kantor ({$office->radius_meter} meter)"
+            ], 403);
+        }
+
+        // ===============================
+        // ✅ Validasi Jam Pulang
         // ===============================
         $settings = Setting::whereIn('key', [
             'work_end_time'
@@ -196,7 +238,7 @@ class AttendanceController extends Controller
         $workEndTime = $settings['work_end_time'] ?? "18:00";
         $workEnd     = Carbon::today()->setTimeFromTimeString($workEndTime);
 
-        if (Carbon::now()->lessThan($workEnd)) {
+        if ($now->lessThan($workEnd)) {
             return response()->json([
                 'status'  => 'error',
                 'message' => "Belum waktunya pulang (minimal jam {$workEndTime})"
@@ -206,24 +248,40 @@ class AttendanceController extends Controller
         // ===============================
         // ✅ Upload Foto Check-out
         // ===============================
-        $photoPath = $request->file('photo')->store(
-            'attendance/checkout',
-            'public'
-        );
+        $selfiePath = $request->file('selfie')
+            ->store('attendance/checkout_selfie', 'public');
 
         // ===============================
-        // ✅ Update Check-out
+        // ✅ Update Attendance (Transactional)
         // ===============================
-        $attendance->update([
-            'check_out'          => Carbon::now()->format('H:i:s'),
-            'checkout_photo'     => $photoPath,
-        ]);
+        DB::beginTransaction();
 
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'Check-out berhasil',
-            'data'    => $attendance->fresh()
-        ], 200);
+        try {
+
+            $attendance->update([
+                'check_out'      => $now->format('H:i:s'),
+                'checkout_photo' => $selfiePath,
+                'manual_edit'    => false,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Check-out berhasil',
+                'data'    => $attendance->fresh()
+            ], 200);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Terjadi kesalahan saat check-out',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
     }
 
 
@@ -334,6 +392,89 @@ class AttendanceController extends Controller
         ]);
     }
 
+    public function attendanceByUser(Request $request, $user_id)
+    {
+        $request->validate([
+            'month' => 'nullable|integer|min:1|max:12',
+            'year'  => 'nullable|integer|min:2000'
+        ]);
+
+        $query = Attendance::with('user')
+            ->where('user_id', $user_id);
+
+        // Optional filter month & year
+        if ($request->month && $request->year) {
+            $query->whereMonth('date', $request->month)
+                ->whereYear('date', $request->year);
+        }
+
+        $attendances = $query->orderBy('date', 'desc')->get();
+
+        if ($attendances->isEmpty()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Data absensi tidak ditemukan'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $attendances
+        ]);
+    }
+
+    public function updateAttendance(Request $request, $id)
+    {
+        $admin = $request->user();
+        $attendance = Attendance::find($id);
+
+        if (!$attendance) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Data absensi tidak ditemukan'
+            ], 404);
+        }
+
+        $request->validate([
+            'check_in'  => 'nullable|date_format:H:i:s',
+            'check_out' => 'nullable|date_format:H:i:s',
+            'status'    => 'nullable|in:hadir,terlambat,izin,sakit,alpha',
+            'note'      => 'nullable|string|max:255'
+        ]);
+
+        $oldData = $attendance->toArray();
+
+        if ($request->check_in) {
+            $attendance->check_in = $request->check_in;
+        }
+
+        if ($request->check_out) {
+            $attendance->check_out = $request->check_out;
+        }
+
+        if ($request->status) {
+            $attendance->status = $request->status;
+        }
+
+        $attendance->manual_edit = true;
+        $attendance->edit_reason = $request->note ?? 'Edited by admin';
+        $attendance->save();
+
+        // 🔥 Simpan Log
+        AttendanceLog::create([
+            'admin_id'      => $admin->id,
+            'attendance_id' => $attendance->id,
+            'action'        => 'edit',
+            'old_data'      => $oldData,
+            'new_data'      => $attendance->toArray(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Absensi berhasil diperbarui',
+            'data'    => $attendance
+        ]);
+    }
 
     public function monthlySummary(Request $request)
     {
@@ -380,7 +521,7 @@ class AttendanceController extends Controller
             'workDays'=> $workDays,
             'summary' => $summary
         ]);
-}
+    }
 
 
     public function adminMonthlySummary(Request $request)
@@ -570,5 +711,19 @@ class AttendanceController extends Controller
         ]);
     }
 
+    public function export(Request $request)
+    {
+        $filters = $request->only([
+            'month',
+            'year',
+            'employee_id',
+            'status'
+        ]);
+
+        return Excel::download(
+            new AttendanceExport($filters),
+            'attendance_report.xlsx'
+        );
+    }
 }   
 

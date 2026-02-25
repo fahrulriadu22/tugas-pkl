@@ -11,12 +11,19 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+
     protected $fillable = [
         'name',
         'email',
         'password',
         'role',
-        'photo'
+
+        // foto profile biasa
+        'photo',
+
+        // wajah referensi untuk absensi
+        'face_photo',
+        'face_verified',
     ];
 
     protected $hidden = [
@@ -28,14 +35,38 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+
+            // Laravel auto hash password
             'password' => 'hashed',
+
+            // boolean untuk face verification
+            'face_verified' => 'boolean',
         ];
     }
+
 
     public function attendances()
     {
         return $this->hasMany(Attendance::class);
     }
+
+
+    public function getPhotoUrlAttribute()
+    {
+        return $this->photo
+            ? asset('storage/' . $this->photo)
+            : null;
+    }
+
+    public function getFacePhotoUrlAttribute()
+    {
+        return $this->face_photo
+            ? asset('storage/' . $this->face_photo)
+            : null;
+    }
+
+    public function activityLogs()
+    {
+        return $this->hasMany(ActivityLog::class);
+    }
 }
-
-

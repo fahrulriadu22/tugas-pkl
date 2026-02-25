@@ -10,7 +10,7 @@ class AdminOnly
 {
     public function handle($request, Closure $next)
     {
-        if ($request->user()->role !== 'admin') {
+        if (!in_array($request->user()->role, ['admin', 'superadmin'])) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Akses khusus admin'
