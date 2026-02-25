@@ -42,9 +42,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Office Location
     Route::get('/office-location', [OfficeLocationController::class, 'getOffice']);
 
-    // Attendance
-    Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
-    Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
+    // Face Enrollment
+    Route::post('/face/enroll', [FaceAuthController::class, 'enroll']);
+
+    // Check status
+    Route::get('/face/status', [FaceAuthController::class, 'status']);
 
     Route::get('/attendance/history', [AttendanceController::class, 'myHistory']);
     Route::get('/attendance/today', [AttendanceController::class, 'today']);
@@ -58,6 +60,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'employeeDashboard']);
+
+    Route::middleware(['auth:sanctum', 'face.verified'])->group(function () {
+
+        Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+        Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
+
+    });
 
     /*
     |--------------------------------------------------------------------------
